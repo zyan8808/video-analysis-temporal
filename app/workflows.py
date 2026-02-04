@@ -59,10 +59,14 @@ class VideoProcessingWorkflowSequential:
         return {
             "input": video,
             "transcript": transcript,
-            "summary_en": english_summary,
-            "translation": translated_transcript,
-            "summary_translated": translated_summary,
+            "english_summary": english_summary,
+            "translated_summary": translated_summary,
         }
+    @workflow.query
+    def get_english_summary(self) -> dict | None:
+        """Query handler to retrieve English summary (useful for failed translations)."""
+        return getattr(self, "_english_summary", None)
+
 
 
 @workflow.defn
