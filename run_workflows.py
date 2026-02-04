@@ -44,8 +44,8 @@ async def main() -> None:
     # Create workflow tasks
     tasks = []
     for video in video_inputs:
-        # Use start_workflow() instead of execute_workflow() to return immediately
-        # This allows us to see failed workflows on the dashboard without blocking
+        # Use start_workflow() to return immediately without blocking
+        # Workflows run in the background and results are fetched later
         workflow_id = (
             f"video-{video['video_id']}-"
             f"{video['target_language']}-durability-demo"

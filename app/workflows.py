@@ -19,7 +19,7 @@ from app.activities import (
 
 @workflow.defn
 class VideoProcessingWorkflowSequential:
-    """Original: Sequential processing (one language at a time)."""
+    """Optimized workflow with parallel translations (sequential extraction → parallel translations)."""
 
     @workflow.run
     async def run(self, video: dict) -> dict:

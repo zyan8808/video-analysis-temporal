@@ -14,9 +14,10 @@ This project orchestrates meeting transcript processing with the following capab
 ### Key Features
 - ✅ **Copilot SDK Integration**: Real AI-powered summarization with enterprise authentication
 - ✅ **Parallel Execution**: 3 concurrent workflows process videos simultaneously
-- ✅ **Optimized Performance**: ~26 seconds for 3 parallel workflows (improved from initial 2+ minutes)
+- ✅ **Optimized Performance**: Parallelized translations save ~20 seconds per workflow
 - ✅ **Dialog-Based Transcripts**: Real meeting conversations with speaker labels
 - ✅ **Multi-Language Output**: English summaries + translations to 3 target languages
+- ✅ **Clean Output Format**: Displays both English and translated results side-by-side
 
 ## Architecture
 
@@ -99,15 +100,38 @@ Executes 3 parallel workflows (Spanish, Japanese, Portuguese translations)
 Starting parallel processing of 3 videos...
 
 ====================================================================================================
-PROCESSING COMPLETE
+PROCESSING RESULTS
 ====================================================================================================
 
-📹 Video ID: meeting-product-roadmap
-🌐 Target Language: es
-📊 SUMMARY (EN):
-  • High-level summary: The team aligned on delivering an analytics revamp...
-📊 SUMMARY (ES):
-  • Resumen general: El equipo se alineó en la entrega de una renovación de analítica...
+✓ MEETING-PRODUCT-ROADMAP - Completed Successfully
+
+📝 ENGLISH SUMMARY:
+  High-level summary:
+    The product roadmap review focused on prioritizing an analytics revamp...
+
+  Key takeaways:
+    - Analytics revamp is the top priority driven by customer demand
+    - Permission confusion is a recurring theme in support tickets
+    - Phase one will include dashboard speedups, role presets, migration guides
+
+  Action items:
+    - Alex drafts the technical plan for the analytics revamp
+    - Priya drafts help content including migration guides
+    - Facilitator schedules stakeholder update for next Tuesday
+
+🌐 SPANISH SUMMARY:
+  Resumen general:
+    La revisión del roadmap del producto se centró en priorizar una renovación...
+
+  Puntos clave:
+    - La renovación de analytics es la máxima prioridad
+    - La confusión sobre permisos es un tema recurrente
+    - La fase uno incluirá aceleración de dashboards, presets de roles
+
+  Acciones de seguimiento:
+    - Alex redacta el plan técnico para la renovación de analytics
+    - Priya redacta el contenido de ayuda
+    - El facilitador programa una actualización con los stakeholders
 ```
 
 ## Project Structure
@@ -178,48 +202,24 @@ This design ensures:
 
 ## Example Output
 
-### Spanish Translation (meeting-product-roadmap)
+The output displays both English and translated summaries for each processed meeting:
 
-```
-📊 SUMMARY (EN):
-  • High-level summary: The team aligned on delivering an analytics revamp 
-    this quarter, focusing on faster dashboards and role presets...
-  • Key takeaways:
-    - Quarter focus: analytics revamp with faster dashboards
-    - Role presets to address permissions confusion
-    - Include migration guides and in-app tips
-    - Performance/scaling risk; mitigation: begin load tests this week
-  • Action items:
-    - Alex to draft the technical plan
-    - Priya to draft help content
-    - Facilitator to schedule stakeholder update for Tuesday
+### Meeting 1: Product Roadmap (Spanish)
+- **English Summary**: Analytics revamp prioritization with dashboard speedups and role presets
+- **Spanish Summary**: Renovación de analytics con paneles más rápidos y presets de roles
 
-📊 SUMMARY (ES):
-  • Resumen general: El equipo se alineó para entregar una renovación de 
-    analítica este trimestre, enfocándose en paneles más rápidos y 
-    preajustes de roles...
-  • Puntos clave:
-    - Enfoque del trimestre: renovación de analítica con paneles más rápidos
-    - Preajustes de roles para resolver confusión de permisos
-    - Incluir guías de migración y consejos dentro de la aplicación
-    - Riesgo de rendimiento/escalabilidad; mitigación: iniciar pruebas de carga esta semana
-  • Acciones de seguimiento:
-    - Alex redactará el plan técnico
-    - Priya redactará contenido de ayuda
-    - El facilitador programará actualización para partes interesadas
-```
+### Meeting 2: Customer Success (Japanese)  
+- **English Summary**: 3% churn reduction, enterprise account requirements, training module blockers
+- **Japanese Summary**: 解約率が3%低下、エンタープライズアカウント要件、トレーニングモジュール
 
-## Performance Metrics
+### Meeting 3: Incident Retro (Portuguese)
+- **English Summary**: Cache misconfiguration outage, monitoring gaps, validation improvements
+- **Portuguese Summary**: Interrupção por cache mal configurada, falhas no monitoramento, melhorias na validação
 
-| Metric | Value |
-|--------|-------|
-| Workflows Executed | 3 (parallel) |
-| Total Execution Time | ~26 seconds |
-| Per-Workflow Time | ~60-70 seconds (sequential steps) |
-| Copilot Calls | 3 per workflow (summarize + 2 translations) |
-| Model Used | GPT-4 |
-| Activity Timeouts | 30s + 25s + 20s + 20s (max) |
-| Speedup vs. Original | 1.9x faster |
+Each result includes:
+- ✅ High-level summary (2-3 sentences)
+- ✅ Key takeaways (3-5 bullet points)
+- ✅ Action items (2-4 tasks with owners)
 
 ## Dependencies
 
@@ -246,92 +246,6 @@ See `requirements.txt` for full list.
 - **Fix**: Ensure worker is running and uses `video-processing-task-queue`
 - **Verify**: `temporal task-queue describe --namespace default video-processing-task-queue`
 
-## Temporal Durability Demo
-
-### What is Temporal Durability?
-Temporal's key feature is **durable execution**: workflows persist their state to the database, enabling automatic recovery from failures without re-executing completed activities.
-
-### How to Demo This
-The project includes a built-in durability demo in [app/activities.py](app/activities.py). Here's how to see it in action:
-
-#### Step 1: Enable Durability Demo
-Edit [app/activities.py](app/activities.py) and change:
-```python
-DURABILITY_DEMO_MODE = False  # Change to True
-```
-
-#### Step 2: Start Services
-```bash
-# Terminal 1: Start Temporal server
-temporal server start-dev
-
-# Terminal 2: Start worker
-python run_worker.py
-
-# Terminal 3: Run workflows
-python run_workflows.py
-```
-
-**Expected Result**: All 3 workflows fail at `translate_transcript` with:
-```
-[DURABILITY DEMO] Transient API timeout translating to es/ja/pt
-```
-
-This simulates a real-world scenario: network timeout, rate limit, or temporary service outage.
-
-#### Step 3: Fix and Resume
-1. Disable the demo in [app/activities.py](app/activities.py):
-```python
-DURABILITY_DEMO_MODE = False  # Back to False
-```
-
-2. Run the workflows again **without restarting the worker**:
-```bash
-python run_workflows.py
-```
-
-**Magic Happens**: 
-- ✅ `extract_transcript` activity **skipped** (already completed)
-- ✅ `summarize_transcript` activity **skipped** (already completed)
-- ✅ `translate_transcript` activity **retried** (now succeeds)
-- ✅ `translate_summary` activity **executed** (continues from failure point)
-- ✅ Workflows complete successfully!
-
-### Why This Matters
-
-Without Temporal, you'd need to:
-1. ❌ Manually track which activities completed
-2. ❌ Manually resume from the failure point
-3. ❌ Risk re-executing expensive operations (duplicate API calls, Copilot invocations)
-4. ❌ Implement custom retry logic and state persistence
-
-With Temporal:
-1. ✅ Automatic state persistence (every activity result stored in database)
-2. ✅ Automatic retry with exponential backoff
-3. ✅ Automatic resume from failure point
-4. ✅ Zero overhead - no manual tracking needed
-5. ✅ Works for any failure: crashes, network errors, timeouts, service degradation
-
-### Real-World Scenarios This Solves
-
-- **API Rate Limits**: External service returns 429 Too Many Requests → Temporal retries after backoff
-- **Network Timeouts**: Copilot API slow → Temporal retries and resumes
-- **Transient Errors**: Temporal server restart → Workflow state preserved in database, auto-resumes
-- **Long-Running Operations**: Multi-hour workflows interrupted → Pick up where it left off
-- **Activity Isolation**: One activity fails → Others already completed are never re-run
-
-### Customizing the Demo
-
-Edit the demo parameters in [app/activities.py](app/activities.py):
-
-```python
-# Failure probability (0.0 = never fail, 1.0 = always fail)
-if random.random() < 0.7:  # Currently 70% failure rate
-    raise RuntimeError(...)
-```
-
-Change which activity fails by moving the demo code to a different activity (`summarize_transcript`, `translate_summary`, etc).
-
 ## Future Enhancements
 
 - [ ] Batch multiple videos in single workflow execution
@@ -340,4 +254,3 @@ Change which activity fails by moving the demo code to a different activity (`su
 - [ ] Support additional languages (French, German, Chinese)
 - [ ] Add UI dashboard for monitoring workflow executions
 - [ ] Implement priority queues for urgent meeting summaries
-- [ ] Add more durability demos (activity retries, saga pattern, compensating transactions)
