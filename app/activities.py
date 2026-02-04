@@ -27,7 +27,7 @@ from app.constants import SUPPORTED_LANGUAGES
 #   5. Re-run: python run_workflows.py
 #   6. Temporal automatically resumes and completes remaining activities!
 # ============================================================================
-DURABILITY_DEMO_MODE = False  # Set to True to simulate transient failures
+DURABILITY_DEMO_MODE = True  # Set to True to simulate transient failures
 
 _copilot_client: CopilotClient | None = None
 _client_lock = asyncio.Lock()
