@@ -9,7 +9,12 @@ from datetime import timedelta
 
 from temporalio import workflow
 
-from app.activities import extract_transcript, summarize_transcript, translate_transcript
+from app.activities import (
+    extract_transcript,
+    summarize_transcript,
+    translate_summary,
+    translate_transcript,
+)
 
 
 @workflow.defn
@@ -18,32 +23,45 @@ class VideoProcessingWorkflowSequential:
 
     @workflow.run
     async def run(self, video: dict) -> dict:
-        # Step 1: Extract transcript (must be first)
+        # Step 1: Extract transcript (English)
         transcript = await workflow.execute_activity(
             extract_transcript,
             video,
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        # Step 2: Translate (depends on transcript)
-        translation = await workflow.execute_activity(
-            translate_transcript,
-            args=(transcript, video.get("target_language", "es")),
-            start_to_close_timeout=timedelta(seconds=30),
+        # Step 2: Generate English summary, key takeaways, action items
+        english_summary = await workflow.execute_activity(
+            summarize_transcript,
+            transcript,
+            start_to_close_timeout=timedelta(seconds=25),
         )
 
-        # Step 3: Summarize (depends on translation)
-        summary = await workflow.execute_activity(
-            summarize_transcript,
-            translation,
-            start_to_close_timeout=timedelta(seconds=30),
+        # Step 3 & 4: Translate transcript AND summary in parallel (independent tasks)
+        target_language = video.get("target_language", "es")
+        
+        # Create both translation tasks
+        translate_transcript_task = workflow.execute_activity(
+            translate_transcript,
+            args=(transcript, target_language),
+            start_to_close_timeout=timedelta(seconds=20),
         )
+        translate_summary_task = workflow.execute_activity(
+            translate_summary,
+            args=(english_summary, target_language),
+            start_to_close_timeout=timedelta(seconds=20),
+        )
+        
+        # Wait for both to complete (they run in parallel)
+        translated_transcript = await translate_transcript_task
+        translated_summary = await translate_summary_task
 
         return {
             "input": video,
             "transcript": transcript,
-            "translation": translation,
-            "summary": summary,
+            "summary_en": english_summary,
+            "translation": translated_transcript,
+            "summary_translated": translated_summary,
         }
 
 

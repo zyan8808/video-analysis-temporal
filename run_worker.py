@@ -3,7 +3,12 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from app.activities import extract_transcript, summarize_transcript, translate_transcript
+from app.activities import (
+    extract_transcript,
+    summarize_transcript,
+    translate_summary,
+    translate_transcript,
+)
 from app.constants import TASK_QUEUE
 from app.workflows import VideoProcessingWorkflow
 
@@ -15,7 +20,12 @@ async def main() -> None:
         client,
         task_queue=TASK_QUEUE,
         workflows=[VideoProcessingWorkflow],
-        activities=[extract_transcript, translate_transcript, summarize_transcript],
+        activities=[
+            extract_transcript,
+            translate_transcript,
+            summarize_transcript,
+            translate_summary,
+        ],
     )
 
     await worker.run()

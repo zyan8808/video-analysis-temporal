@@ -20,34 +20,22 @@ async def main() -> None:
     # Customize this list with your own video IDs and target languages
     video_inputs = [
         {
-            "video_id": "webinar-2024-q1",
+            "video_id": "meeting-product-roadmap",
             "source_language": "en",
             "target_language": "es",
-            "description": "Q1 webinar about new features",
+            "description": "Product roadmap planning session",
         },
         {
-            "video_id": "webinar-2024-q1",
+            "video_id": "meeting-customer-success",
             "source_language": "en",
             "target_language": "ja",
-            "description": "Q1 webinar about new features",
+            "description": "Customer success weekly sync",
         },
         {
-            "video_id": "customer-success-story",
+            "video_id": "meeting-incident-retro",
             "source_language": "en",
             "target_language": "pt",
-            "description": "Customer testimonial video",
-        },
-        {
-            "video_id": "onboarding-101",
-            "source_language": "en",
-            "target_language": "es",
-            "description": "Employee onboarding session",
-        },
-        {
-            "video_id": "quarterly-review",
-            "source_language": "en",
-            "target_language": "ja",
-            "description": "Quarterly business review",
+            "description": "Incident retrospective",
         },
     ]
 
@@ -87,10 +75,17 @@ async def main() -> None:
         if isinstance(result, Exception):
             print(f"❌ ERROR: {result}")
         else:
-            # Print summary section only for brevity
-            summary = result.get("summary", {})
-            print(f"\n📊 SUMMARY ({summary.get('language', 'unknown').upper()}):")
-            for section in summary.get("sections", []):
+            summary_en = result.get("summary_en", {})
+            summary_translated = result.get("summary_translated", {})
+
+            print("\n📊 SUMMARY (EN):")
+            for section in summary_en.get("sections", []):
+                print(f"  • {section['heading']}: {section['text']}")
+
+            print(
+                f"\n📊 SUMMARY ({summary_translated.get('language', 'unknown').upper()}):"
+            )
+            for section in summary_translated.get("sections", []):
                 print(f"  • {section['heading']}: {section['text']}")
 
     print(f"\n{'='*100}\n")

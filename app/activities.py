@@ -1,40 +1,124 @@
 from __future__ import annotations
 
+import asyncio
+import json
+
 from temporalio import activity
-from github_copilot_sdk import CopilotClient
+from copilot import CopilotClient
 
 from app.constants import SUPPORTED_LANGUAGES
 
-# Initialize Copilot client (uses Copilot CLI authentication)
-# Make sure you have installed and authenticated with: gh auth login
-copilot_client = CopilotClient()
+_copilot_client: CopilotClient | None = None
+_client_lock = asyncio.Lock()
+
+
+def _parse_json_object(text: str) -> dict:
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("No JSON object found", text, 0)
+    
+    # Try to find valid JSON starting from the first '{'
+    for end in range(len(text) - 1, start, -1):
+        if text[end] == "}":
+            candidate = text[start : end + 1]
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+    
+    raise json.JSONDecodeError("No valid JSON object found", text, 0)
+
+
+async def _get_copilot_client() -> CopilotClient:
+    global _copilot_client
+    async with _client_lock:
+        if _copilot_client is None:
+            _copilot_client = CopilotClient()
+            await _copilot_client.start()
+    return _copilot_client
+
+
+async def _copilot_prompt(prompt: str, model: str = "gpt-5") -> str:
+    """Send prompt to Copilot and get response."""
+    client = await _get_copilot_client()
+    session = await client.create_session({"model": model, "streaming": False})
+    done = asyncio.Event()
+    chunks: list[str] = []
+
+    def on_event(event) -> None:
+        if event.type.value == "assistant.message":
+            content = event.data.content or ""
+            if content:
+                chunks.append(content)
+        elif event.type.value == "session.idle":
+            done.set()
+
+    session.on(on_event)
+    await session.send({"prompt": prompt})
+    try:
+        await asyncio.wait_for(done.wait(), timeout=30.0)
+    except asyncio.TimeoutError:
+        raise RuntimeError("Copilot response timeout after 30 seconds")
+    finally:
+        await session.destroy()
+
+    response_text = "".join(chunks).strip()
+    if not response_text:
+        raise RuntimeError("Copilot returned an empty response")
+    return response_text
 
 
 @activity.defn
 async def extract_transcript(video: dict) -> dict:
     video_id = video.get("video_id", "unknown")
-    
-    # Enhanced dialog-based transcript with speaker interactions
-    transcript_text = f"""Speaker 1: Welcome everyone to today's session on {video_id}!
-Speaker 2: Thanks for having me. I'm excited to discuss our latest updates.
-Speaker 1: Let's start with the product roadmap. What are the key highlights?
-Speaker 2: We have three major features launching this quarter. First, we're introducing automated workflows.
-Speaker 1: That sounds promising. How will this impact our current users?
-Speaker 2: Great question. Users will see a 40% reduction in manual tasks, which means more time for strategic work.
-Speaker 1: Excellent. What about the second feature?
-Speaker 2: The second feature is enhanced analytics with real-time dashboards.
-Speaker 1: I'm sure our customers will love that. And the third feature?
-Speaker 2: The third is improved collaboration tools with integrated messaging and file sharing.
-Speaker 1: Perfect. What are the next steps for our team?
-Speaker 2: We need to schedule training sessions, update documentation, and gather feedback from early adopters.
-Speaker 1: Great. Let's make sure we follow up with stakeholders and set clear timelines.
-Speaker 2: Absolutely. I'll prepare a detailed action plan and share it with the team by end of week."""
-    
+
+    transcripts = {
+        "meeting-product-roadmap": """Facilitator: Thanks everyone for joining the product roadmap review.
+Alex: Our priority is the analytics revamp; customers want faster dashboards.
+Priya: Support tickets also show confusion around permissions.
+Facilitator: Let’s align on scope. What can we deliver this quarter?
+Alex: I propose phase one includes dashboard speedups and role presets.
+Priya: We should also add migration guides and in-app tips.
+Facilitator: Any risks?
+Alex: Performance testing could delay launch if we hit scaling issues.
+Priya: We can mitigate by starting load tests this week.
+Facilitator: Action items—Alex drafts the technical plan, Priya drafts the help content, I’ll set a stakeholder update next Tuesday.
+Alex: Sounds good.
+Priya: Agreed.""",
+        "meeting-customer-success": """Moderator: Welcome to the customer success sync.
+Dana: We saw churn drop 3% after onboarding improvements.
+Miguel: Two enterprise accounts still need custom reporting.
+Moderator: What’s the impact if we miss those?
+Miguel: Renewal risk in Q2.
+Dana: I can schedule executive briefings and gather requirements.
+Moderator: Let’s do that. Also, any blockers on the training series?
+Dana: The last two modules need legal review.
+Miguel: I’ll follow up with legal today.
+Moderator: Great. Action items—Dana schedules briefings, Miguel follows up with legal, I’ll update the renewal forecast by Friday.""",
+        "meeting-incident-retro": """Incident Lead: Let’s review yesterday’s outage.
+Sam: The root cause was a misconfigured cache policy during deployment.
+Lina: Monitoring didn’t alert us until latency spiked for 10 minutes.
+Incident Lead: How do we prevent this?
+Sam: Add a pre-deploy validation step and rollback on cache mismatches.
+Lina: We also need better alert thresholds and a synthetic check.
+Incident Lead: Timeline for fixes?
+Sam: I can implement validation by Thursday.
+Lina: Alert changes by Wednesday.
+Incident Lead: Action items—Sam handles validation, Lina updates alerts, I’ll document the runbook update and share with the team.""",
+    }
+
+    transcript_text = transcripts.get(video_id)
+    if not transcript_text:
+        raise ValueError(
+            f"No transcript found for video_id '{video_id}'. "
+            f"Available: {', '.join(transcripts.keys())}."
+        )
+
     return {
         "video_id": video_id,
         "language": "en",
         "text": transcript_text,
-        "source": "mock",
+        "source": "dialog",
     }
 
 
@@ -48,16 +132,20 @@ async def translate_transcript(transcript: dict, target_language: str) -> dict:
 
     video_id = transcript.get("video_id", "unknown")
     base_text = transcript.get("text", "")
-    templates = {
-        "es": "Transcripción traducida (ES) del video {video_id}: {text}",
-        "ja": "ビデオ{video_id}の翻訳済み文字起こし（JA）: {text}",
-        "pt": "Transcrição traduzida (PT) do vídeo {video_id}: {text}",
+    language_names = {
+        "es": "Spanish",
+        "ja": "Japanese",
+        "pt": "Portuguese",
     }
+    language_name = language_names.get(target_language, target_language)
 
-    translated_text = templates[target_language].format(
-        video_id=video_id,
-        text=base_text,
+    prompt = (
+        f"Translate the following meeting transcript into {language_name}. "
+        "Keep speaker labels and line breaks exactly.\n\n"
+        f"Transcript:\n{base_text}"
     )
+
+    translated_text = await _copilot_prompt(prompt, model="gpt-4")
 
     return {
         "video_id": video_id,
@@ -68,92 +156,104 @@ async def translate_transcript(transcript: dict, target_language: str) -> dict:
 
 
 @activity.defn
-async def summarize_transcript(translation: dict) -> dict:
-    video_id = translation.get("video_id", "unknown")
-    language = translation.get("language", "es")
-    dialog_text = translation.get("text", "")
+async def summarize_transcript(transcript: dict) -> dict:
+    video_id = transcript.get("video_id", "unknown")
+    dialog_text = transcript.get("text", "")
 
-    # Prepare prompt for Copilot to generate structured summary
-    prompt = f"""Analyze the following video transcript and provide a structured summary in {language} language.
+    prompt = f"""Analyze the following meeting transcript and return JSON only.
 
 Transcript:
 {dialog_text}
 
-Please provide the summary in the following format:
-1. High-level summary (2-3 sentences)
-2. Key takeaways (3-5 bullet points)
-3. Action items (2-4 specific follow-up tasks)
+Return JSON with the exact schema:
+{{
+  "summary": "2-3 sentences",
+  "key_takeaways": ["3-5 bullets"],
+  "action_items": ["2-4 tasks"]
+}}
+"""
 
-Ensure all text is in {language} language."""
+    summary_json = await _copilot_prompt(prompt, model="gpt-4")
+    parsed = _parse_json_object(summary_json)
 
-    try:
-        # Use Copilot SDK to generate AI-powered summary
-        response = await copilot_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes video transcripts."},
-                {"role": "user", "content": prompt}
-            ],
-            model="gpt-4",
-            temperature=0.7,
-        )
-        
-        summary_text = response.choices[0].message.content
-        
-        # Parse the AI-generated summary into structured format
-        # For now, return it as a single structured response
-        # You can enhance this to parse the response into separate sections
-        
-        headings = {
-            "es": ["Resumen general", "Puntos clave", "Acciones de seguimiento"],
-            "ja": ["概要", "主要なポイント", "フォローアップのアクション"],
-            "pt": ["Resumo geral", "Principais aprendizados", "Ações de acompanhamento"],
-        }
-        
-        selected_headings = headings.get(language, headings["es"])
-        
-        # Simple parsing - in production, you'd want more sophisticated parsing
-        sections = [
-            {"heading": selected_headings[0], "text": f"AI-generated summary for {video_id}"},
-            {"heading": selected_headings[1], "text": summary_text[:200]},
-            {"heading": selected_headings[2], "text": "Follow-up actions based on AI analysis"},
-        ]
-        
-    except Exception as e:
-        # Fallback to mock data if Copilot API fails
-        headings = {
-            "es": ["Resumen general", "Puntos clave", "Acciones de seguimiento"],
-            "ja": ["概要", "主要なポイント", "フォローアップのアクション"],
-            "pt": ["Resumo geral", "Principais aprendizados", "Ações de acompanhamento"],
-        }
-        
-        summary_templates = {
-            "es": [
-                f"El video {video_id} presenta actualizaciones del producto y próximos pasos.",
-                "Se destacó el progreso reciente y la alineación del equipo.",
-                "Programar una revisión y compartir notas con las partes interesadas.",
-            ],
-            "ja": [
-                f"ビデオ{video_id}では製品更新と次のステップが説明されています。",
-                "最近の進捗とチームの整合性が強調されました。",
-                "レビューを予定し、関係者にメモを共有します。",
-            ],
-            "pt": [
-                f"O vídeo {video_id} apresenta atualizações do produto e próximos passos.",
-                "Foram destacados o progresso recente e o alinhamento da equipe.",
-                "Agendar uma revisão e compartilhar notas com as partes interessadas.",
-            ],
-        }
-        
-        selected_headings = headings.get(language, headings["es"])
-        selected_templates = summary_templates.get(language, summary_templates["es"])
-        
-        sections = [
-            {"heading": heading, "text": text}
-            for heading, text in zip(selected_headings, selected_templates)
-        ]
+    sections = [
+        {"heading": "High-level summary", "text": parsed["summary"]},
+        {
+            "heading": "Key takeaways",
+            "text": "\n".join(f"- {item}" for item in parsed["key_takeaways"]),
+        },
+        {
+            "heading": "Action items",
+            "text": "\n".join(f"- {item}" for item in parsed["action_items"]),
+        },
+    ]
 
     return {
         "video_id": video_id,
-        "language": language,
+        "language": "en",
+        "sections": sections,
+    }
+
+
+@activity.defn
+async def translate_summary(summary: dict, target_language: str) -> dict:
+    if target_language not in SUPPORTED_LANGUAGES:
+        raise ValueError(
+            f"Unsupported language '{target_language}'. "
+            f"Supported: {', '.join(SUPPORTED_LANGUAGES)}."
+        )
+
+    video_id = summary.get("video_id", "unknown")
+    sections = summary.get("sections", [])
+
+    combined_text = "\n".join(
+        f"{section.get('heading', '')}: {section.get('text', '')}" for section in sections
+    )
+
+    language_names = {
+        "es": "Spanish",
+        "ja": "Japanese",
+        "pt": "Portuguese",
+    }
+    language_name = language_names.get(target_language, target_language)
+
+    prompt = f"""Translate the following summary into {language_name} and return JSON only.
+
+Summary:
+{combined_text}
+
+Return JSON with the exact schema:
+{{
+  "summary": "translated summary",
+  "key_takeaways": ["translated bullets"],
+  "action_items": ["translated tasks"]
+}}
+"""
+
+    translated_json = await _copilot_prompt(prompt, model="gpt-4")
+    parsed = _parse_json_object(translated_json)
+
+    headings = {
+        "es": ["Resumen general", "Puntos clave", "Acciones de seguimiento"],
+        "ja": ["概要", "主要なポイント", "フォローアップのアクション"],
+        "pt": ["Resumo geral", "Principais aprendizados", "Ações de acompanhamento"],
+    }
+    selected_headings = headings.get(target_language, headings["es"])
+
+    sections = [
+        {"heading": selected_headings[0], "text": parsed["summary"]},
+        {
+            "heading": selected_headings[1],
+            "text": "\n".join(f"- {item}" for item in parsed["key_takeaways"]),
+        },
+        {
+            "heading": selected_headings[2],
+            "text": "\n".join(f"- {item}" for item in parsed["action_items"]),
+        },
+    ]
+
+    return {
+        "video_id": video_id,
+        "language": target_language,
         "sections": sections,
     }
