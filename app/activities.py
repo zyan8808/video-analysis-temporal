@@ -59,7 +59,7 @@ async def _get_copilot_client() -> CopilotClient:
     return _copilot_client
 
 
-async def _copilot_prompt(prompt: str, model: str = "gpt-5") -> str:
+async def _copilot_prompt(prompt: str, model: str = "gpt-4") -> str:
     """Send prompt to Copilot and get response."""
     client = await _get_copilot_client()
     session = await client.create_session({"model": model, "streaming": False})
