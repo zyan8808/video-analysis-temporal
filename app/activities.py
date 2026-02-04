@@ -2,11 +2,32 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 
 from temporalio import activity
 from copilot import CopilotClient
 
 from app.constants import SUPPORTED_LANGUAGES
+
+# ============================================================================
+# DURABILITY DEMO MODE: Uncomment DURABILITY_DEMO_MODE to simulate failures
+# ============================================================================
+# This demonstrates Temporal's key feature: durable execution and recovery.
+# When enabled, the translate_transcript activity will fail on the first attempt
+# with a simulated "Transient API Timeout" error. Temporal will:
+#   1. Automatically retry the failed activity (up to max_attempts)
+#   2. Preserve state of completed activities
+#   3. Resume from the failed point when you fix the issue and restart
+# 
+# To see this in action:
+#   1. Uncomment DURABILITY_DEMO_MODE = True below
+#   2. Run workflows: python run_workflows.py
+#   3. Observe: workflows fail at translate_transcript
+#   4. Comment out DURABILITY_DEMO_MODE = False
+#   5. Re-run: python run_workflows.py
+#   6. Temporal automatically resumes and completes remaining activities!
+# ============================================================================
+DURABILITY_DEMO_MODE = False  # Set to True to simulate transient failures
 
 _copilot_client: CopilotClient | None = None
 _client_lock = asyncio.Lock()
@@ -124,6 +145,25 @@ Incident Lead: Action items—Sam handles validation, Lina updates alerts, I’l
 
 @activity.defn
 async def translate_transcript(transcript: dict, target_language: str) -> dict:
+    # ============================================================================
+    # DURABILITY DEMO: Simulate a transient failure (e.g., API timeout)
+    # ============================================================================
+    # Uncomment the following lines to see Temporal's durable execution in action:
+    # When this fails, Temporal will:
+    #   - Automatically retry up to 3 times with exponential backoff
+    #   - Preserve completed activities (extract_transcript, summarize_transcript)
+    #   - Resume from this point when you fix and restart
+    # ============================================================================
+    if DURABILITY_DEMO_MODE:
+        import random
+        if random.random() < 0.7:  # 70% chance of failure on first attempt
+            raise RuntimeError(
+                f"[DURABILITY DEMO] Transient API timeout translating to {target_language}. "
+                f"This simulates a transient failure (network timeout, rate limit, etc). "
+                f"Temporal will retry this activity automatically. "
+                f"To recover: disable DURABILITY_DEMO_MODE and restart the workflow."
+            )
+    
     if target_language not in SUPPORTED_LANGUAGES:
         raise ValueError(
             f"Unsupported language '{target_language}'. "

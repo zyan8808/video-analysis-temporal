@@ -246,6 +246,92 @@ See `requirements.txt` for full list.
 - **Fix**: Ensure worker is running and uses `video-processing-task-queue`
 - **Verify**: `temporal task-queue describe --namespace default video-processing-task-queue`
 
+## Temporal Durability Demo
+
+### What is Temporal Durability?
+Temporal's key feature is **durable execution**: workflows persist their state to the database, enabling automatic recovery from failures without re-executing completed activities.
+
+### How to Demo This
+The project includes a built-in durability demo in [app/activities.py](app/activities.py). Here's how to see it in action:
+
+#### Step 1: Enable Durability Demo
+Edit [app/activities.py](app/activities.py) and change:
+```python
+DURABILITY_DEMO_MODE = False  # Change to True
+```
+
+#### Step 2: Start Services
+```bash
+# Terminal 1: Start Temporal server
+temporal server start-dev
+
+# Terminal 2: Start worker
+python run_worker.py
+
+# Terminal 3: Run workflows
+python run_workflows.py
+```
+
+**Expected Result**: All 3 workflows fail at `translate_transcript` with:
+```
+[DURABILITY DEMO] Transient API timeout translating to es/ja/pt
+```
+
+This simulates a real-world scenario: network timeout, rate limit, or temporary service outage.
+
+#### Step 3: Fix and Resume
+1. Disable the demo in [app/activities.py](app/activities.py):
+```python
+DURABILITY_DEMO_MODE = False  # Back to False
+```
+
+2. Run the workflows again **without restarting the worker**:
+```bash
+python run_workflows.py
+```
+
+**Magic Happens**: 
+- ✅ `extract_transcript` activity **skipped** (already completed)
+- ✅ `summarize_transcript` activity **skipped** (already completed)
+- ✅ `translate_transcript` activity **retried** (now succeeds)
+- ✅ `translate_summary` activity **executed** (continues from failure point)
+- ✅ Workflows complete successfully!
+
+### Why This Matters
+
+Without Temporal, you'd need to:
+1. ❌ Manually track which activities completed
+2. ❌ Manually resume from the failure point
+3. ❌ Risk re-executing expensive operations (duplicate API calls, Copilot invocations)
+4. ❌ Implement custom retry logic and state persistence
+
+With Temporal:
+1. ✅ Automatic state persistence (every activity result stored in database)
+2. ✅ Automatic retry with exponential backoff
+3. ✅ Automatic resume from failure point
+4. ✅ Zero overhead - no manual tracking needed
+5. ✅ Works for any failure: crashes, network errors, timeouts, service degradation
+
+### Real-World Scenarios This Solves
+
+- **API Rate Limits**: External service returns 429 Too Many Requests → Temporal retries after backoff
+- **Network Timeouts**: Copilot API slow → Temporal retries and resumes
+- **Transient Errors**: Temporal server restart → Workflow state preserved in database, auto-resumes
+- **Long-Running Operations**: Multi-hour workflows interrupted → Pick up where it left off
+- **Activity Isolation**: One activity fails → Others already completed are never re-run
+
+### Customizing the Demo
+
+Edit the demo parameters in [app/activities.py](app/activities.py):
+
+```python
+# Failure probability (0.0 = never fail, 1.0 = always fail)
+if random.random() < 0.7:  # Currently 70% failure rate
+    raise RuntimeError(...)
+```
+
+Change which activity fails by moving the demo code to a different activity (`summarize_transcript`, `translate_summary`, etc).
+
 ## Future Enhancements
 
 - [ ] Batch multiple videos in single workflow execution
@@ -254,3 +340,4 @@ See `requirements.txt` for full list.
 - [ ] Support additional languages (French, German, Chinese)
 - [ ] Add UI dashboard for monitoring workflow executions
 - [ ] Implement priority queues for urgent meeting summaries
+- [ ] Add more durability demos (activity retries, saga pattern, compensating transactions)
