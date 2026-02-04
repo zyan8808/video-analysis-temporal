@@ -48,7 +48,7 @@ This project orchestrates meeting transcript processing with the following capab
 
 1. Clone and navigate to the repository:
 ```bash
-cd /Users/zizhaoyan/video-analysis-temporal
+cd video-analysis-temporal
 ```
 
 2. Create and activate a virtual environment:
@@ -65,13 +65,13 @@ pip install -r requirements.txt
 4. Authenticate with GitHub Copilot:
 ```bash
 gh auth login
-# Select your enterprise account (e.g., zizyan@github.com)
+# Select your enterprise/personal GitHub account
 ```
 
 5. Configure Git for commits:
 ```bash
-git config user.name "zyan8808"
-git config user.email "zyan8808@users.noreply.github.com"
+git config user.name "your-github-username"
+git config user.email "your-email@example.com"
 ```
 
 ## Running the Pipeline
