@@ -59,7 +59,11 @@ async def main() -> None:
         task = client.execute_workflow(
             VideoProcessingWorkflow.run,
             video,
-            id=f"video-{video['video_id']}-{video['target_language']}-{asyncio.get_event_loop().time()}",
+            id=(
+                f"video-{video['video_id']}-"
+                f"{video['target_language']}-"
+                f"{asyncio.get_event_loop().time()}"
+            ),
             task_queue=TASK_QUEUE,
             execution_timeout=timedelta(minutes=2),
         )

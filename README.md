@@ -27,12 +27,12 @@ pip install -r requirements.txt
 
 ## Run the worker
 ```
-python worker.py
+python run_worker.py
 ```
 
-## Run the client
+## Run the client (parallel example)
 ```
-python client.py
+python run_workflows.py
 ```
 
 ## Example outputs
