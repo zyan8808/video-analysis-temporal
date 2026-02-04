@@ -155,14 +155,12 @@ async def translate_transcript(transcript: dict, target_language: str) -> dict:
     #   - Resume from this point when you fix and restart
     # ============================================================================
     if DURABILITY_DEMO_MODE:
-        # import random
-        # if random.random() < 0.7:  # 70% chance of failure on first attempt
-            raise RuntimeError(
-                f"[DURABILITY DEMO] Transient API timeout translating to {target_language}. "
-                f"This simulates a transient failure (network timeout, rate limit, etc). "
-                f"Temporal will retry this activity automatically. "
-                f"To recover: disable DURABILITY_DEMO_MODE and restart the workflow."
-            )
+        raise RuntimeError(
+            f"[DURABILITY DEMO] Transient API timeout translating to {target_language}. "
+            f"This simulates a transient failure (network timeout, rate limit, etc). "
+            f"Temporal will retry this activity automatically. "
+            f"To recover: disable DURABILITY_DEMO_MODE and restart the workflow."
+        )
     
     if target_language not in SUPPORTED_LANGUAGES:
         raise ValueError(
