@@ -155,8 +155,8 @@ async def translate_transcript(transcript: dict, target_language: str) -> dict:
     #   - Resume from this point when you fix and restart
     # ============================================================================
     if DURABILITY_DEMO_MODE:
-        import random
-        if random.random() < 0.7:  # 70% chance of failure on first attempt
+        # import random
+        # if random.random() < 0.7:  # 70% chance of failure on first attempt
             raise RuntimeError(
                 f"[DURABILITY DEMO] Transient API timeout translating to {target_language}. "
                 f"This simulates a transient failure (network timeout, rate limit, etc). "
