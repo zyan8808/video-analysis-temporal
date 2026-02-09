@@ -15,7 +15,7 @@ from app.constants import SUPPORTED_LANGUAGES
 # This demonstrates Temporal's key feature: durable execution and recovery.
 # When enabled, the translate_transcript activity will fail on the first attempt
 # with a simulated "Transient API Timeout" error. Temporal will:
-#   1. Automatically retry the failed activity (up to max_attempts)
+#   1. Automatically retry the failed activity (with exponential backoff, unlimited by default)
 #   2. Preserve state of completed activities
 #   3. Resume from the failed point when you fix the issue and restart
 # 
@@ -150,7 +150,7 @@ async def translate_transcript(transcript: dict, target_language: str) -> dict:
     # ============================================================================
     # Uncomment the following lines to see Temporal's durable execution in action:
     # When this fails, Temporal will:
-    #   - Automatically retry up to 3 times with exponential backoff
+    #   - Automatically retry with exponential backoff (default: unlimited retries)
     #   - Preserve completed activities (extract_transcript, summarize_transcript)
     #   - Resume from this point when you fix and restart
     # ============================================================================
@@ -200,16 +200,17 @@ async def summarize_transcript(transcript: dict) -> dict:
 
     prompt = f"""Analyze the following meeting transcript and return JSON only.
 
-Transcript:
-{dialog_text}
+                    Transcript:
+                    {dialog_text}
 
-Return JSON with the exact schema:
-{{
-  "summary": "2-3 sentences",
-  "key_takeaways": ["3-5 bullets"],
-  "action_items": ["2-4 tasks"]
-}}
-"""
+                    Return JSON with the exact schema:
+                    {{
+                    "summary": "2-3 sentences",
+                    "key_takeaways": ["3-5 bullets"],
+                    "action_items": ["2-4 tasks"]
+                    }}
+                    
+                """
 
     summary_json = await _copilot_prompt(prompt, model="gpt-4")
     parsed = _parse_json_object(summary_json)
