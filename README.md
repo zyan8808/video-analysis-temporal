@@ -24,7 +24,7 @@ This project orchestrates meeting transcript processing with the following capab
 ### Components
 - **Temporal Server**: Orchestration engine (dev-mode on localhost:7233)
 - **Worker**: Registers 4 activities and polls the task queue
-- **Client**: Submits 3 parallel workflow executions
+- **Client**: Submits a single batch workflow execution processing multiple videos in parallel
 - **GitHub Copilot SDK**: Provides AI-powered summarization and translation
 - **Activity Chain**: 
   ```
@@ -93,7 +93,7 @@ Registers activities and polls for tasks on `video-processing-task-queue`
 ```bash
 python run_workflows.py
 ```
-Executes 3 parallel workflows (Spanish, Japanese, Portuguese translations)
+Executes a single batch workflow processing 3 videos concurrently (Spanish, Japanese, Portuguese)
 
 ### Expected Output
 ```
@@ -140,10 +140,10 @@ PROCESSING RESULTS
 video-analysis-temporal/
 ├── app/
 │   ├── activities.py          # 4 Temporal activities (extract, summarize, translate)
-│   ├── workflows.py           # Sequential workflow definition
+│   ├── workflows.py           # Batch workflow definition
 │   └── constants.py           # Language mappings
 ├── run_worker.py              # Worker registration and startup
-├── run_workflows.py           # Client that submits 3 parallel workflows
+├── run_workflows.py           # Client that submits batch workflow
 ├── requirements.txt           # Python dependencies
 └── README.md
 ```
@@ -187,18 +187,18 @@ Each transcript contains real-world speaker labels and multi-turn conversations.
 
 ## Workflow
 
-### VideoProcessingWorkflowSequential (Active)
-1. Extract transcript (sequential - must be first)
-2. Generate English summary with key takeaways and action items
-3. **Parallel Block:**
+### VideoProcessingWorkflowBatch (Active)
+1. **Batch Extraction**: Extracts transcripts for all videos in parallel
+2. **Parallel Processing (per video)**:
+   - Generate English summary
    - Translate transcript to target language
-   - Translate summary to target language
-4. Return combined result with all 4 outputs
+3. **Summary Translation**: Translates summaries to target language
+4. Return aggregated results for all videos
 
 This design ensures:
-- Transcript extraction completes first (dependency for all)
-- Summary generation uses complete transcript
-- Independent translations run concurrently (saves ~20 seconds)
+- Massive parallelism: All videos processed simultaneously
+- Resource efficiency: Summary generation and transcript translation run concurrently
+- Localized output: Summaries are translated to target languages
 
 ## Example Output
 
@@ -248,7 +248,7 @@ See `requirements.txt` for full list.
 
 ## Future Enhancements
 
-- [ ] Batch multiple videos in single workflow execution
+- [x] Batch multiple videos in single workflow execution
 - [ ] Add speaker diarization for speaker label accuracy
 - [ ] Cache Copilot session to reduce session creation overhead
 - [ ] Support additional languages (French, German, Chinese)
